@@ -75,6 +75,12 @@ class SimpleSwitch13(app_manager.RyuApp):
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
 
+    def is_broadcast_mac(mac):
+        if mac == "ff:ff:ff:ff:ff:ff":
+            return True 
+        else:
+            return False
+
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
         # If you hit this you might want to increase
@@ -100,7 +106,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         dpid = datapath.id
         self.mac_to_port.setdefault(dpid, {})
 
-        self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
+        self.logger.info(">>>>>>> packet in %s %s %s %s", dpid, src, dst, in_port)
 
 
         # # learn a mac address to avoid FLOOD next time.
@@ -120,7 +126,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
             self.logger.info("src IN mac to port========================================")
             self.logger.info(self.mac_to_port)
-            if self.mac_to_port[dpid][src] != in_port:
+            if self.mac_to_port[dpid][src] != in_port and str(dst) == "ff:ff:ff:ff:ff:ff":
                 # add flow to drop packet on this in_port
                 prio = 2
                 actions = []
@@ -136,13 +142,16 @@ class SimpleSwitch13(app_manager.RyuApp):
                                             match=match, instructions=inst)
 
                 datapath.send_msg(mod)
+                self.logger.info("IN PORT WRONG: %s, DROPPING PKT", in_port)
                 return
 
 
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
+            self.logger.info("dst found, outputing pkt to port %s", out_port)
         else:
             out_port = ofproto.OFPP_FLOOD
+            self.logger.info("dst NOT found, flooding...")
 
         actions = [parser.OFPActionOutput(out_port)]
 
@@ -174,14 +183,14 @@ class SimpleSwitch13(app_manager.RyuApp):
         # print "------------------------------"
         link_list = get_link(self, None)
         links = [(link.src.dpid, link.dst.dpid, {'port':link.src.port_no}) for link in link_list]
-        #print "Links:--------------------------------------------------------"
-        #print links
-        #print "size: ", str(len(links))
-        #print "-----------------------------------------------------------------"
+        print "Links:--------------------------------------------------------"
+        print links
+        print "size: ", str(len(links))
+        print "-----------------------------------------------------------------"
         self.net.add_nodes_from(switches)
         self.net.add_edges_from(links)
-        #if len(switches) >= 20:
+        if len(switches) >= 20:
             #nx.draw(self.net)
             #plt.savefig("path.png")
-            #print "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-            #return
+            print "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+            return
