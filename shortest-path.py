@@ -31,7 +31,7 @@ from ryu.topology import event, switches
 from ryu.topology.api import get_switch, get_link
 from ryu.app.wsgi import ControllerBase
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 class SimpleSwitch13(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -146,12 +146,27 @@ class SimpleSwitch13(app_manager.RyuApp):
                 return
 
 
-        if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
+        if src not in self.net:
+            self.net.add_node(src)
+            self.net.add_edge(dpid, src, {'port':in_port})
+            self.net.add_edge(src, dpid)
+
+
+        if dst in self.net:
+            path = nx.shortest_path(self.net, src, dst)
+            next = path[path.index(dpid)+1]
+            out_port = self.net[dpid][next]['port']
             self.logger.info("dst found, outputing pkt to port %s", out_port)
+            self.logger.info("path is : %s", str(path))
         else:
             out_port = ofproto.OFPP_FLOOD
-            self.logger.info("dst NOT found, flooding...")
+
+        # if dst in self.mac_to_port[dpid]:
+        #     out_port = self.mac_to_rt[dpopid][dst]
+        #     self.logger.info("dst found, outputing pkt to port %s", out_port)
+        # else:
+        #     out_port = ofproto.OFPP_FLOOD
+        #     self.logger.info("dst NOT found, flooding...")
 
         actions = [parser.OFPActionOutput(out_port)]
 
@@ -162,7 +177,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             # flow_mod & packet_out
             if msg.buffer_id != ofproto.OFP_NO_BUFFER:
                 self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-                return
+                #return
             else:
                 self.add_flow(datapath, 1, match, actions)
         data = None
