@@ -13,7 +13,7 @@ def dijskrtas(G, source_node):
     #distance to source node is 0
     distance[source_node] = {'node_name': source_node,'distance': 0,'next_hop': source_node};
 
-    visited_nodes = []
+    visited_nodes = {}
     unvisited_nodes = copy.copy(distance)
 
     while(len(unvisited_nodes) > 0):
@@ -27,27 +27,19 @@ def dijskrtas(G, source_node):
             if x['distance'] <= min_dist:
                 min_dist = x['distance']
                 min_node = x['node_name']
-                nh = x['next_hop']
+                next_hop = x['next_hop']
 
-        print "-------------------------------------"
-        print "Distances: " + str(distance)
-        print "Porcessing Min Node: " + str(min_node)
-
-
-        visited_nodes.append(min_node)
-        for x in G.neighbors(min_node):
-            if(x in visited_nodes):
-                continue
-            if(min_dist + G[min_node][x]['weight'] < unvisited_nodes[x]['distance']):
-                print ">>>>>>>> Distance from " + str(source_node) + " to " + \
-                str(x) + " updated from " + str(unvisited_nodes[x]) + " to " + \
-                str(min_dist + G[min_node][x]['weight'])
-                unvisited_nodes[x]['distance'] = min_dist + G[min_node][x]['weight']
-                unvisited_nodes[x]['node_name'] = x
-                unvisited_nodes[x]['next_hop'] = (x if (nh == source_node) else nh)
+        if (min_node not in visited_nodes):
+            visited_nodes[min_node] = [next_hop]
+            for x in G.neighbors(min_node):
+                if(x in visited_nodes):
+                    continue
+                if(min_dist + G[min_node][x]['weight'] < unvisited_nodes[x]['distance']):
+                    unvisited_nodes[x]['distance'] = min_dist + G[min_node][x]['weight']
+                    unvisited_nodes[x]['node_name'] = x
+                    unvisited_nodes[x]['next_hop'] = x if min_node == source_node else next_hop 
 
         distance[min_node] = unvisited_nodes[min_node]
-        print "Distance to Node " + str(min_node) + ": " + str(distance[min_node])
         del unvisited_nodes[min_node]
     return distance
  
