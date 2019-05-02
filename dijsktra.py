@@ -29,19 +29,25 @@ def dijskrtas(G, source_node):
                 min_node = x['node_name']
                 nh = x['next_hop']
 
+        print "-------------------------------------"
+        print "Distances: " + str(distance)
+        print "Porcessing Min Node: " + str(min_node)
+
+
         visited_nodes.append(min_node)
         for x in G.neighbors(min_node):
             if(x in visited_nodes):
                 continue
-            if(min_dist + G[min_node][x]['weight'] < unvisited_nodes[x]):
+            if(min_dist + G[min_node][x]['weight'] < unvisited_nodes[x]['distance']):
+                print ">>>>>>>> Distance from " + str(source_node) + " to " + \
+                str(x) + " updated from " + str(unvisited_nodes[x]) + " to " + \
+                str(min_dist + G[min_node][x]['weight'])
                 unvisited_nodes[x]['distance'] = min_dist + G[min_node][x]['weight']
                 unvisited_nodes[x]['node_name'] = x
-                if(nh == source_node):
-                    unvisited_nodes[x]['next_hop'] = x
-                else:
-                    unvisited_nodes[x]['next_hop'] = nh
+                unvisited_nodes[x]['next_hop'] = (x if (nh == source_node) else nh)
 
         distance[min_node] = unvisited_nodes[min_node]
+        print "Distance to Node " + str(min_node) + ": " + str(distance[min_node])
         del unvisited_nodes[min_node]
     return distance
  
