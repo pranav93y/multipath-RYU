@@ -17,6 +17,7 @@
 An OpenFlow 1.0 L2 learning switch implementation.
 """
 
+from heapq import heappop, heappush
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -49,6 +50,7 @@ class SimpleSwitch(app_manager.RyuApp):
         super(SimpleSwitch, self).__init__(*args, **kwargs)
         self.switch_to_port = {}
         self.label = 20
+        self.switch_to_label = {}
         self.dst_to_label = {}
         self.host_to_switch = {}
         self.net = nx.DiGraph()
@@ -214,7 +216,7 @@ class SimpleSwitch(app_manager.RyuApp):
         #     actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
         #     self.add_flow(datapath, match, actions, priority, msg.buffer_id)
 
-        self.dst_to_label.setdefault(dpid, {})
+        self.switch_to_label.setdefault(dpid, {})
         self.switch_to_port.setdefault(dpid, {})
         
 
@@ -242,7 +244,7 @@ class SimpleSwitch(app_manager.RyuApp):
 
         if root_port ==  None:
             self.logger.info("Root Port is None...\n Quitting...")
-            self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
+            # self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
             return
 
         #Add flow for unknown unicast, drop duplicate flooded packets
@@ -308,33 +310,29 @@ class SimpleSwitch(app_manager.RyuApp):
         # IPV4 packets that come trough in_port with this destination
         match = parser.OFPMatch(eth_src = eth.src, in_port=in_port, eth_dst=dst, eth_type=eth.ethertype)
 
-        self.label = self.label + 1
-        self.dst_to_label[datapath.id][eth.dst] = self.label
+        # self.label = self.label + 1
+        # self.switch_to_label[datapath.id][eth.dst] = self.label
 
-        # Set the out_port using the relation learnt with the ARP packet
-        #out_port = self.switch_to_port[datapath.id][self.host_to_switch[dst]['switch']]
-        # if self.host_to_switch[dst]['switch'] in self.switch_to_port[dpid]:
-        #     out_port = self.switch_to_port[dpid][self.host_to_switch[dst]['switch']]
-        # else:
-        #     #Set root port
-        #     path = nx.shortest_path(self.net, dpid, self.host_to_switch[dst]['switch'])
-        #     next_hop = path[path.index(dpid)+1]
-        #     root_port = self.net[dpid][next_hop]['port']
-        #     self.switch_to_port[dpid][self.host_to_switch[dst]['switch']] = root_port
-        #     out_port = root_port
+        label = None
         if self.host_to_switch[dst]['switch'] == dpid:
             out_port = self.host_to_switch[dst]['port']
             actions = [parser.OFPActionOutput(out_port)]
         else:
-            out_port = self.switch_to_port[dpid][self.host_to_switch[dst]['switch']]
+            # out_port = self.switch_to_port[dpid][self.host_to_switch[dst]['switch']]
+            # choose label
+            
+            paths_labels = self.switch_to_label[dpid][self.host_to_switch[dst]['switch']].keys()
+            label = paths_labels[0]
+            next_hop = self.switch_to_label[dpid][self.host_to_switch[dst]['switch']][label]['next_hop']
+            out_port = self.net[dpid][next_hop]['port']
             # Set the action to be performed by the datapath
             actions = [parser.OFPActionPushMpls(ethertype=34887,type_=None, len_=None),
-                parser.OFPActionSetField(mpls_label=self.label),
+                parser.OFPActionSetField(mpls_label=label),
                 parser.OFPActionOutput(out_port)]
 
         
-        self.logger.info("Flow match: in_port=%s, dst=%s, type=IP",in_port, dst)
-        self.logger.info("Flow actions: pushMPLS=%s, out_port=%s",self.label, out_port)
+        # self.logger.info("Flow match: in_port=%s, dst=%s, type=IP",in_port, dst)
+        # self.logger.info("Flow actions: pushMPLS=%s, out_port=%s",label, out_port)
 
         priority = HIGH
 
@@ -368,31 +366,37 @@ class SimpleSwitch(app_manager.RyuApp):
         # The switch can be a LSR or a LER, but the match is the same
         match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_type=ethtype,mpls_label=mpls_proto.label)
 
-        self.logger.info("Flow match: in_port=%s, dst=%s, type=IP, label=%s",in_port, dst, mpls_proto.label)
+        # self.logger.info("Flow match: in_port=%s, dst=%s, type=IP, label=%s",in_port, dst, mpls_proto.label)
 
         # Set the out_port using the relation learnt with the ARP packet
         #out_port = self.switch_to_port[dpid][self.host_to_switch[dst]['switch']]
-        self.logger.info("Source Swith Dst: " + str(self.host_to_switch[dst]['switch']))
-        self.logger.info("dpid: " + str(dpid))
+        # self.logger.info("Source Swith Dst: " + str(self.host_to_switch[dst]['switch']))
+        # self.logger.info("dpid: " + str(dpid))
 
         if self.host_to_switch[dst]['switch'] != dpid:
-            out_port = self.switch_to_port[dpid][self.host_to_switch[dst]['switch']]
+            # out_port = self.switch_to_port[dpid][self.host_to_switch[dst]['switch']]
+            #Choose label
+            paths_labels = self.switch_to_label[dpid][self.host_to_switch[dst]['switch']].keys()
+            label = paths_labels[0]
+            next_hop = self.switch_to_label[dpid][self.host_to_switch[dst]['switch']][label]['next_hop']
+            out_port = self.net[dpid][next_hop]['port']
+
             #The switch is LSR
             #Create New Label
-            self.label = self.label + 1
+            # self.label = self.label + 1
             actions = [parser.OFPActionPopMpls(),
                         parser.OFPActionPushMpls(),
-                        parser.OFPActionSetField(mpls_label=self.label),
+                        parser.OFPActionSetField(mpls_label=label),
                         parser.OFPActionOutput(out_port)]
-            self.logger.info("Flow actions: switchMPLS=%s, out_port=%s",self.label, out_port)
+            # self.logger.info("Flow actions: switchMPLS=%s, out_port=%s",label, out_port)
         else:
-            self.logger.info("Edge Router>>>>>>>>")
+            # self.logger.info("Edge Router>>>>>>>>")
             out_port = self.host_to_switch[dst]['port']
             #The switc is LER
             #Pop Label
             actions = [parser.OFPActionPopMpls(),
             parser.OFPActionOutput(out_port)]
-            self.logger.info("Flow actions: popMPLS, out_port=%s", out_port)
+            # self.logger.info("Flow actions: popMPLS, out_port=%s", out_port)
         priority = HIGH
         # Install a flow
         self.add_flow(datapath, match, actions, priority, msg.buffer_id)
@@ -422,13 +426,13 @@ class SimpleSwitch(app_manager.RyuApp):
     @set_ev_cls(event.EventSwitchEnter)
     def handler_switch_enter(self, ev):
         self.net.clear()
-
+        self.switch_to_label.clear()
         # The Function get_switch(self, None) outputs the list of switches.
         topo_raw_switches = get_switch(self, None)
         # The Function get_link(self, None) outputs the list of links.
         topo_raw_links = get_link(self, None)
 
-        links = [(link.src.dpid, link.dst.dpid, {'port': link.src.port_no}) for link in topo_raw_links]
+        links = [(link.src.dpid, link.dst.dpid, {'port': link.src.port_no, 'cost': 1}) for link in topo_raw_links]
         switches = [i.dp.id for i in topo_raw_switches]
 
         self.logger.info("Switches: %d --------------------------", len(switches))
@@ -440,12 +444,20 @@ class SimpleSwitch(app_manager.RyuApp):
 
         self.net.add_nodes_from(switches)
         self.net.add_edges_from(links)
+
         self.set_root_ports(switches)
         self.logger.info("Root Ports: >>>>>>>>>>>>>>>>>>>>>>")
         self.logger.info(str(self.switch_to_port))
 
         del topo_raw_links
         del topo_raw_switches
+
+        r = self.dijsktra(self.net, switches[0])
+        self.logger.info("SW: %s =============================================>", str(switches[0]))
+        self.logger.info(str(r))
+
+        self.compute_labels(switches)
+        
 
     def set_root_ports(self, switches):
         for sw in switches:
@@ -458,6 +470,46 @@ class SimpleSwitch(app_manager.RyuApp):
                 next_hop = path[path.index(sw)+1]
                 root_port = self.net[sw][next_hop]['port']
                 self.switch_to_port[sw][i] = root_port
+
+    def compute_labels(self, switches):
+        for src in switches:
+            label = 21
+            r = self.dijsktra(self.net, src)
+            self.switch_to_label.setdefault(src, {})
+            for dst in r.keys():
+                if dst == src:
+                    continue
+                self.switch_to_label[src].setdefault(dst, {})
+                for path in r[dst]:
+                    self.switch_to_label[src][dst][label] = {'next_hop': path[0], 'cost': path[1]}
+                    label += 1
+        self.logger.info("LABELS COMPUTED &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+        self.logger.info(str(self.switch_to_label))
+        self.logger.info("LABELS COMPUTED &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+
+    def dijsktra(self, G, source_node):
+        routes = {}
+        unvisited = [(0, source_node, source_node)]
+        visited = set()
+
+        while unvisited:
+            (cost, dst, nh) = heappop(unvisited)
+            if dst not in visited or cost == routes[dst][0][1]:
+                visited.add(dst)
+                if nh == source_node: 
+                    nh = dst
+
+                if dst in routes:
+                    routes[dst].append((nh, cost))
+                else:
+                    routes[dst] = [(nh, cost)]
+
+                for n in G.neighbors(dst):
+                    heappush(unvisited, (cost+G[dst][n]['cost'], n, nh))
+
+        return routes
+
+
 
     
 
